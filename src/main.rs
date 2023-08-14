@@ -106,7 +106,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Build the client using the builder pattern
     let client = reqwest::Client::builder().cookie_store(true).build()?;
-    
+
     // Perform the actual execution of the network request
     let res = client
         .get(&format!("{}/wp/editions/latest", BASE_URL))
@@ -121,7 +121,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("{:?}", edition.slug);
 
-    let login: Login;
+    let mut login: Login;
     if Path::new("login.json").is_file() {
 
         let file = File::open("login.json")?;
@@ -129,10 +129,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Read token saved with first login
         login = serde_json::from_reader(reader)?;
-        
+
+        // refresh token (if required, but we do it every time now)
+        let req_str = format!(r#"{{"refreshToken":"{}"}}"#, login.token.refreshToken);
+        let json_req: serde_json::Value = serde_json::from_str(&req_str).unwrap();
+
+        let res = client
+            .post(&format!("{}/auth/token", BASE_URL))
+            .json(&json_req)
+            .send()
+            .await?;
+        // update token part
+        login.token = res.json::<Token>()
+                    .await?;
+        // save it again
+        let file = match File::create("login.json") {
+            Err(why) => panic!("couldn't create {}", why),
+            Ok(file) => file,
+        };
+        serde_json::to_writer(&file, &login)?;
+
     } else {
         let credentials = Credentials{email: args.email, password: args.password};
-        
+
         let res = client
             .post(&format!("{}/auth/login", BASE_URL))
             .json(&credentials)
@@ -145,8 +164,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Err(why) => panic!("couldn't create {}", why),
             Ok(file) => file,
         };
-        serde_json::to_writer(&file, &login);
-        
+        serde_json::to_writer(&file, &login)?;
+
         println!("{:?}", login);
     }
 
@@ -160,10 +179,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .header(AUTHORIZATION, reqwest::header::HeaderValue::from_str(&auth_code).unwrap())
             .send()
             .await?;
-    
+
         let filename = format!("{}.pdf", edition.slug);
         let content =  res.bytes().await?;
-        write_file(filename, content);
+        write_file(filename, content)?;
     }
 
     if args.epub {
@@ -172,12 +191,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .header(AUTHORIZATION, reqwest::header::HeaderValue::from_str(&auth_code).unwrap())
             .send()
             .await?;
-    
+
         let posts = res.json::<Data>()
                     .await?;
         for post in posts.data {
             // TODO: make this a function
-    
+
             let res = client
                 .get(&format!("{}/wp/posts/{}/download/epub", BASE_URL, post.slug))
                 .header(AUTHORIZATION, reqwest::header::HeaderValue::from_str(&auth_code).unwrap())
@@ -186,8 +205,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let filename = format!("{}.epub", post.slug);
             let content =  res.bytes().await?;
-            write_file(filename, content);
-    
+            write_file(filename, content)?;
+
         }
     }
 
