@@ -49,19 +49,21 @@ struct Edition {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 struct User {
-    userId: i32,
+    user_id: i32,
     email: String,
-    membershipCode: String,
-    firstName: String,
-    lastName: String
+    membership_code: String,
+    first_name: String,
+    last_name: String
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 struct Token {
-    expiresIn: i32,
-    accessToken: String,
-    refreshToken: String,
+    expires_in: i32,
+    access_token: String,
+    refresh_token: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -131,7 +133,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         login = serde_json::from_reader(reader)?;
 
         // refresh token (if required, but we do it every time now)
-        let req_str = format!(r#"{{"refreshToken":"{}"}}"#, login.token.refreshToken);
+        let req_str = format!(r#"{{"refreshToken":"{}"}}"#, login.token.refresh_token);
         let json_req: serde_json::Value = serde_json::from_str(&req_str).unwrap();
 
         let res = client
@@ -170,7 +172,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
 
-    let auth_code = format!("Bearer {}", login.token.accessToken);
+    let auth_code = format!("Bearer {}", login.token.access_token);
 
     if args.pdf {
         println!("{:?}", &format!("{}/wp/pdfs/slug/{}/download", BASE_URL, edition.pdf));
