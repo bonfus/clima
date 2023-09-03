@@ -7,10 +7,24 @@ use std::fs::File;
 use std::path::Path;
 use std::io::Write;
 use std::io::BufReader;
+use std::fs;
 
 use bytes::Bytes;
+use bytes::buf::BufExt;
 
 use reqwest::header::AUTHORIZATION;
+
+
+use epub_builder::EpubBuilder;
+use epub_builder::Result;
+use epub_builder::ZipLibrary;
+use epub_builder::EpubContent;
+use epub_builder::ReferenceType;
+use epub_builder::TocElement;
+
+use epub::doc::EpubDoc;
+
+
 
 pub const BASE_URL: &str = "https://api.ilmanifesto.it/api/v1";
 
@@ -26,6 +40,14 @@ struct Args {
     #[arg(short, long, default_value_t = false)]
     epub: bool,
 
+    /// Generates a single ePUB file
+    #[arg(short, long, default_value_t = false)]
+    single_epub: bool,
+
+    /// Keep downloaded ePUB files (mainly for debugging)
+    #[arg(short, long, default_value_t = false)]
+    keep_files: bool,
+
     /// Email
     #[arg(long, default_value = "")]
     email: String,
@@ -36,16 +58,20 @@ struct Args {
 }
 
 #[derive(Serialize, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Credentials {
     email: String,
     password: String,
 }
 
 #[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 struct Edition {
     id: i32,
     slug: String,
-    pdf: String
+    pdf: String,
+    title: String,
+    featured_image: Option<Image>
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -74,11 +100,20 @@ struct Login {
 
 
 #[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 struct Post {
     id: i32,
     slug: String,
     title: String,
-    link: String
+    link: String,
+    cover_position: Option<i32>
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+struct Image {
+    src: String,
+    alt: String
 }
 
 
@@ -196,8 +231,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let posts = res.json::<Data>()
                     .await?;
-        for post in posts.data {
+
+        for post in &posts.data {
             // TODO: make this a function
+            let filename = format!("{}.epub", post.slug);
+
+            if Path::new(&filename).exists() { continue };
 
             let res = client
                 .get(&format!("{}/wp/posts/{}/download/epub", BASE_URL, post.slug))
@@ -205,10 +244,77 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .send()
                 .await?;
 
-            let filename = format!("{}.epub", post.slug);
             let content =  res.bytes().await?;
             write_file(filename, content)?;
 
+        }
+
+        // Creates a single output file
+        if args.single_epub {
+            // TODO: make this a function
+
+            // Create a new EpubBuilder using the zip library
+            let mut builder = EpubBuilder::new(ZipLibrary::new()?)?;
+
+            // Set some metadata
+            builder.add_author("il Manifesto");
+            builder.set_title(edition.title);
+            builder.set_lang("it");
+            builder.set_toc_name("Articoli");
+            //builder.set_publication_date Maybe in the future
+
+            // Grab image and place it as cover
+            if edition.featured_image.is_some() {
+                let res = client
+                    .get(&edition.featured_image.unwrap().src)
+                    .send()
+                    .await?;
+
+                let content =  res.bytes().await?;
+                //let filename = format!("{}.jpg", edition.slug);
+                //write_file(filename, content)?;
+                builder.add_cover_image("cover.jpg", content.reader(), "image/jpeg")?;
+            }
+
+            builder.inline_toc();
+
+            let mut posts_data = posts.data;
+
+            // sort by cover position (on None, set to 99)
+            posts_data.sort_by_key(|element| element.cover_position.or(Some(99)));
+
+            for post in &posts_data {
+
+                let filename = format!("{}.epub", post.slug);
+                let doc = EpubDoc::new(&filename);
+                if !doc.is_ok() { continue };
+
+                let mut doc = doc.unwrap();
+
+                assert_eq!("application/xhtml+xml", doc.get_current_mime().unwrap());
+
+                //let title = doc.metadata.get("title").unwrap();
+                // println!("Title: {0}", &title[0]);
+
+                let content = doc.get_resource_str_by_path("OEBPS/Chapter001.xhtml").unwrap();
+                let content_file = format!("{}.xhtml", post.slug);
+
+                // Add a chapter, mark it as beginning of the "real content"
+                builder.add_content(
+                    EpubContent::new(content_file, content.as_bytes())
+                        .title(&post.title)
+                        .reftype(ReferenceType::Text),
+                )?;
+
+                // Keep epub files if requested
+                if !args.keep_files { fs::remove_file(&filename)?; }
+            }
+
+
+            // Use standard file writer?
+            let filename = format!("{}.epub", edition.slug);
+            let f = File::create(&filename).expect("Unable to create file");
+            builder.generate(f)?;
         }
     }
 

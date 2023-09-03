@@ -4,6 +4,8 @@ Command Line Interface to il Manifesto ([ilmanifesto.it](https://ilmanifesto.it)
 
 I use this code to download the new editions of the Italian newspaper directly on my devices (phone, kobo etc etc).
 
+It can collect both the PDF and the ePubs.
+
 I don't know rust and this is definitively a very ugly piece of code, but it works! :)
 
 ### Cross-compiling
@@ -33,8 +35,17 @@ On first usage you have to login with username and password and specify if you w
 
 A file name `login.json` is created and used to access the new editions if present.
 
+When a valid `login.json` is present, last edition can be downloaded with
 
+```bash
+./il_manifesto -p
+```
+
+See `--help` for details.
 
 ## TODO
 
-Merge articles in epub format into a single epub document.
+- [x] Merge articles in epub format into a single epub document.
+- [ ] Save epubs in memory when merging.
+- [ ] Handle errors.
+- [ ] Create binaries with actions.
