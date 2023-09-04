@@ -20,7 +20,6 @@ use epub_builder::Result;
 use epub_builder::ZipLibrary;
 use epub_builder::EpubContent;
 use epub_builder::ReferenceType;
-use epub_builder::TocElement;
 
 use epub::doc::EpubDoc;
 
@@ -102,18 +101,19 @@ struct Login {
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 struct Post {
-    id: i32,
+    // id: i32, Not currently used
     slug: String,
     title: String,
-    link: String,
+    // link: String, Not currently used
     cover_position: Option<i32>
 }
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 struct Image {
+    #[allow(unused_variables)]
     src: String,
-    alt: String
+    // alt: String Not currently used
 }
 
 
@@ -141,17 +141,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let args = Args::parse();
 
-    // Build the client using the builder pattern
+    // Create the client
     let client = reqwest::Client::builder().cookie_store(true).build()?;
 
-    // Perform the actual execution of the network request
+    // Get last edition (currently the only supported operation)
     let res = client
         .get(&format!("{}/wp/editions/latest", BASE_URL))
         //.headers(headers)
         .send()
         .await?;
 
-    // Parse the response body as Json in this case
+    // Parse the response body
     let edition = res
         .json::<Edition>()
         .await?;
@@ -187,7 +187,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         serde_json::to_writer(&file, &login)?;
 
     } else {
-        let credentials = Credentials{email: args.email, password: args.password};
+
+        let credentials;
+
+        if args.email.is_empty() || args.password.is_empty() {
+
+            if Path::new("credentials.json").is_file() {
+                let file = File::open("credentials.json")?;
+                let reader = BufReader::new(file);
+
+                // Read credentials from file
+                credentials = serde_json::from_reader(reader)?;
+            } else {
+                panic!("Credentials required!");
+            }
+
+        } else {
+            credentials = Credentials{email: args.email, password: args.password};
+        }
 
         let res = client
             .post(&format!("{}/auth/login", BASE_URL))
