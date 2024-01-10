@@ -24,13 +24,18 @@ use random_string::generate;
 use image::io::Reader as ImageReader;
 use image::ImageFormat;
 
+// Logging
+use log::{info, warn};
+
 // API base URL
 pub const BASE_URL: &str = "https://api.ilmanifesto.it/api/v1";
 
-// This is used to generate random names for the pictures
-// can be removed once I check that epub_builder generates
+// The set of characters below is used to generate random names for the pictures
+// and can be removed once I check that epub_builder generates
 // valid ids from file names.
-pub const CHARSET: &str = "abcdefghijklmnopqrstuvwxyz";
+// When doing that be careful, sometime figures are reused and thus have the same name.
+// The correct way is probably using uniquely defined names (md5?).
+pub const CHARSET: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
 // Hacky way to have a templete for format
 macro_rules! IMAGE_HTML {
@@ -177,7 +182,7 @@ fn write_file(filename: String, content: Bytes, is_tmp: bool) -> std::io::Result
 fn extract_file_from_url(url_str: &String) -> Result<String, Box<dyn std::error::Error>> {
     let url = Url::parse(&url_str)?;
     let path_segments = url.path_segments().ok_or_else(|| "cannot be base")?;
-    return Ok(String::from(path_segments.last().unwrap()));
+    Ok(String::from(path_segments.last().unwrap()))
 }
 
 fn resize_image(image_path: PathBuf) -> Result<Cursor<Vec<u8>>, Box<dyn std::error::Error>> {
@@ -189,7 +194,7 @@ fn resize_image(image_path: PathBuf) -> Result<Cursor<Vec<u8>>, Box<dyn std::err
     img.thumbnail(600, 600)
         .write_to(&mut buff, ImageFormat::Jpeg)?;
     buff.rewind().unwrap();
-    return Ok(buff);
+    Ok(buff)
 }
 
 fn combine_articles(
@@ -360,7 +365,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Parse the response body
     let edition = res.json::<Edition>().await?;
 
-    println!("{:?}", edition.slug);
+    info!("{:?}", edition.slug);
 
     // Check if token is already available, or ask it to server
     let mut login: Login;
@@ -424,14 +429,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
         serde_json::to_writer(&file, &login)?;
 
-        println!("{:?}", login);
+        info!("{:?}", login);
     }
 
     let auth_code = format!("Bearer {}", login.token.access_token);
 
     // Download PDF
     if args.pdf {
-        println!(
+        info!(
             "{:?}",
             &format!("{}/wp/pdfs/slug/{}/download", BASE_URL, edition.pdf)
         );
