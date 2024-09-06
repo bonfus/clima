@@ -74,6 +74,14 @@ struct Args {
     #[arg(short, long, default_value_t = false)]
     keep_files: bool,
 
+    /// List editions and quit
+    #[arg(short, long, default_value_t = 0)]
+    list_editions: i32,
+
+    /// Download previous edition
+    #[arg(short, long, default_value_t = 0)]
+    get_edition: i32,
+
     /// Email
     #[arg(long, default_value = "")]
     email: String,
@@ -88,6 +96,12 @@ struct Args {
 pub struct Credentials {
     email: String,
     password: String,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+struct Editions {
+    data: Edition,
 }
 
 #[derive(Deserialize, Debug)]
@@ -187,12 +201,11 @@ fn extract_file_from_url(url_str: &String) -> Result<String, Box<dyn std::error:
 
 fn resize_image(image_path: PathBuf) -> Result<Cursor<Vec<u8>>, Box<dyn std::error::Error>> {
     let reader = ImageReader::open(image_path).expect("Failed reading image");
-    let img = reader.decode().expect("Damn I couldn't decode the picture");
+    let img = reader.with_guessed_format()?.decode()?;
 
     let mut buff = Cursor::new(Vec::new());
 
-    img.thumbnail(600, 600)
-        .write_to(&mut buff, ImageFormat::Jpeg)?;
+    img.thumbnail(600, 600).write_to(&mut buff, ImageFormat::Jpeg)?;
     buff.rewind().unwrap();
     Ok(buff)
 }
@@ -240,11 +253,16 @@ fn combine_articles(
                 let unique_image_name = format!("{}.jpg", generate(12, CHARSET));
 
                 // file name is used in the id of xml file and cannot start with number
-                builder.add_resource(
-                    &unique_image_name,
-                    resize_image(image_path)?,
-                    "image/jpeg",
-                )?;
+                if let Ok(data) = resize_image(image_path) {
+                    builder.add_resource(&unique_image_name,
+                                            data,
+                                            "image/jpeg",
+                                            )?;
+                } else {
+                    info!("Failed to resize image!");
+                }
+
+
 
                 let title_file = format!("{}-cover.xhtml", post.slug);
                 let title_content = format!(
@@ -276,11 +294,14 @@ fn combine_articles(
                 let unique_image_name = format!("{}.jpg", generate(12, CHARSET));
 
                 // file name is used in the id of xml file and cannot start with number
-                builder.add_resource(
-                    &unique_image_name,
-                    resize_image(image_path)?,
-                    "image/jpeg",
-                )?;
+                if let Ok(data) = resize_image(image_path) {
+                    builder.add_resource(&unique_image_name,
+                                            data,
+                                            "image/jpeg",
+                                            )?;
+                } else {
+                    info!("Failed to resize image!");
+                }
 
                 let title_file = format!("{}-front.xhtml", post.slug);
                 let title_content = format!(
@@ -346,6 +367,9 @@ fn combine_articles(
     }
 
     Ok(())
+}
+
+fn show_editions() {
 }
 
 #[tokio::main]
@@ -562,5 +586,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    info!("All done!");
     Ok(())
 }
