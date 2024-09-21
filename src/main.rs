@@ -2,7 +2,7 @@
 use clap::Parser;
 
 // JSON
-use serde::{Deserialize, Serialize};
+use serde::{de, Deserializer, Deserialize, Serialize};
 
 // Files
 use bytes::Bytes;
@@ -53,6 +53,15 @@ macro_rules! IMAGE_HTML {
 </html>
 "#
     };
+}
+
+// Function to convert the strange cover_position values to something reasonable.
+// They are 1 to 6 or "" when not present. This replaces "" with 99 that should be
+// large enough.
+fn de_format_cover_position<'de, D>(deserializer: D) -> Result<i32, D::Error>
+    where D: Deserializer<'de>
+{
+    Ok(i32::deserialize(deserializer).or(Ok(99))?)
 }
 
 #[derive(Parser, Debug)]
@@ -120,8 +129,9 @@ struct User {
     user_id: i32,
     email: String,
     membership_code: String,
-    first_name: String,
-    last_name: String,
+    // No longer there:
+    //    first_name: String,
+    //    last_name: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -148,7 +158,8 @@ struct Post {
     summary: String,
     excerpt: String,
     // link: String, Not currently used
-    cover_position: Option<i32>,
+    #[serde(deserialize_with = "de_format_cover_position")]
+    cover_position: i32, // Used to be cover_position: Option<i32>,
     cover_summary: String,
     cover_title: String,
     cover_image: Option<Image>,
@@ -238,8 +249,9 @@ fn combine_articles(
     builder.inline_toc();
 
     let mut posts_data = posts.data;
-    // sort by cover position (on None, set to 99)
-    posts_data.sort_by_key(|element| element.cover_position.or(Some(99)));
+
+    // sort by cover position
+    posts_data.sort_by_key(|element| element.cover_position );
 
     // add cover page
     for post in &posts_data {
