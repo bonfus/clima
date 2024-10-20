@@ -137,7 +137,7 @@ struct User {
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 struct Token {
-    expires_in: i32,
+    // expires_in: i32, No longer there
     access_token: String,
     refresh_token: String,
 }
